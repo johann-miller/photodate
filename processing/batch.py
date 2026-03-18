@@ -9,7 +9,7 @@ from typing import Callable
 from processing.exif_reader import get_capture_date
 from processing.date_stamp import stamp_file
 
-SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tiff", ".tif"}
+SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tiff", ".tif", ".heic", ".heif"}
 
 
 @dataclass

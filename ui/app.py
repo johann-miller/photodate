@@ -152,7 +152,7 @@ class App(tk.Tk):
         # Outline
         ttk.Label(f, text="Outline (px):").grid(row=r, column=0, columnspan=2, sticky="w", pady=(6, 0))
         r += 1
-        self._outline_var = tk.IntVar(value=3)
+        self._outline_var = tk.IntVar(value=2)
         outline = ttk.Spinbox(f, from_=0, to=20, textvariable=self._outline_var, width=8,
                               command=self._refresh_preview)
         outline.grid(row=r, column=0, columnspan=2, sticky="ew")
@@ -251,7 +251,7 @@ class App(tk.Tk):
     def _browse_preview(self):
         p = filedialog.askopenfilename(
             title="Select preview photo",
-            filetypes=[("Images", "*.jpg *.jpeg *.png *.tiff *.tif"), ("All files", "*.*")],
+            filetypes=[("Images", "*.jpg *.jpeg *.png *.tiff *.tif *.heic *.heif"), ("All files", "*.*")],
         )
         if p:
             self._prev_var.set(p)
