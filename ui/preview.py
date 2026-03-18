@@ -64,7 +64,8 @@ class PreviewPanel(tk.Frame):
             new_h = max(1, int(orig_h * scale))
             img = img.resize((new_w, new_h), Image.LANCZOS)
 
-            stamped = apply_stamp(img, date_str, position, font_size_pct, color, padding_pct, outline_px)
+            scaled_outline = max(0, round(outline_px * scale))
+            stamped = apply_stamp(img, date_str, position, font_size_pct, color, padding_pct, scaled_outline)
 
             self._tk_image = ImageTk.PhotoImage(stamped)
             self._canvas.delete("all")
