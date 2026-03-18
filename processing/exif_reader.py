@@ -1,11 +1,12 @@
 from datetime import datetime
 from PIL import Image
 
-# Priority order for EXIF date tags
+# Priority order for EXIF date tags.
+# DateTime (306) is intentionally excluded — it reflects last-modified time
+# and gets overwritten to the download date on Windows, not the capture date.
 _DATE_TAGS = [
     36867,  # DateTimeOriginal
     36868,  # DateTimeDigitized
-    306,    # DateTime
 ]
 _DATE_FMT = "%Y:%m:%d %H:%M:%S"
 
