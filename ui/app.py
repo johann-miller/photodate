@@ -35,6 +35,7 @@ class App(tk.Tk):
         self._batch_ok = 0
         self._batch_fail = 0
         self._batch_running = False
+        self._batch_failures: list[BatchResult] = []
         self._preview_images: list[str] = []
         self._preview_index: int = 0
 
@@ -339,6 +340,7 @@ class App(tk.Tk):
         self._batch_done = 0
         self._batch_ok = 0
         self._batch_fail = 0
+        self._batch_failures = []
         self._batch_running = True
 
         self._start_btn.config(state="disabled")
@@ -369,6 +371,7 @@ class App(tk.Tk):
                         self._batch_ok += 1
                     else:
                         self._batch_fail += 1
+                        self._batch_failures.append(result)
                     pct = (self._batch_done / self._batch_total * 100) if self._batch_total else 0
                     self._progress_var.set(pct)
                     self._status_var.set(
@@ -397,9 +400,43 @@ class App(tk.Tk):
             if fail == 0:
                 messagebox.showinfo("Done", f"{ok} photos processed successfully.")
             else:
-                messagebox.showwarning(
-                    "Done", f"{ok} succeeded, {fail} skipped or failed\n(no EXIF date or processing error)."
-                )
+                self._show_failures(ok, self._batch_failures)
+
+    def _show_failures(self, ok: int, failures: list[BatchResult]):
+        win = tk.Toplevel(self)
+        win.title("Processing complete — some files skipped")
+        win.minsize(560, 360)
+        win.grab_set()
+
+        summary = f"{ok} succeeded, {len(failures)} skipped or failed:"
+        ttk.Label(win, text=summary, padding=(10, 10, 10, 4)).pack(anchor="w")
+
+        frame = tk.Frame(win)
+        frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 4))
+
+        scrollbar = ttk.Scrollbar(frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        listbox = tk.Listbox(frame, yscrollcommand=scrollbar.set, activestyle="none", selectmode=tk.BROWSE)
+        listbox.pack(fill=tk.BOTH, expand=True)
+        scrollbar.config(command=listbox.yview)
+
+        for r in failures:
+            reason = f"  ({r.error})" if r.error else ""
+            listbox.insert(tk.END, os.path.basename(r.path) + reason)
+
+        listbox.bind("<Double-1>", lambda e: self._copy_failure_path(listbox, failures))
+
+        tip = ttk.Label(win, text="Double-click a row to copy its full path.", foreground="gray", padding=(10, 0, 10, 6))
+        tip.pack(anchor="w")
+
+        ttk.Button(win, text="Close", command=win.destroy).pack(pady=(0, 10))
+
+    def _copy_failure_path(self, listbox: tk.Listbox, failures: list[BatchResult]):
+        idx = listbox.curselection()
+        if idx:
+            self.clipboard_clear()
+            self.clipboard_append(failures[idx[0]].path)
 
     def _cancel(self):
         self._cancel_event.set()
