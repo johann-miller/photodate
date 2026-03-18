@@ -1,2 +1,2 @@
 # photodate
-Webapp for putting dates on photos in bulk, with some customiziablility
+Python application for putting dates on photos in bulk, with some customiziablility
