@@ -13,18 +13,18 @@ from ui.preview import PreviewPanel
 _POLL_MS = 50  # progress queue poll interval
 
 _FORMAT_PRESETS = [
+    ("%B %d, %Y",     "March 18, 2026"),
     ("%Y-%m-%d",      "2026-03-18"),
     ("%d/%m/%Y",      "18/03/2026"),
     ("%m/%d/%Y",      "03/18/2026"),
     ("%Y-%m-%d %H:%M", "2026-03-18 14:30"),
-    ("%B %d, %Y",     "March 18, 2026"),
 ]
 
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("photodate")
+        self.title("Photodate")
         self.minsize(920, 560)
 
         self._color: tuple[int, int, int] = (255, 255, 255)
@@ -35,8 +35,12 @@ class App(tk.Tk):
         self._batch_ok = 0
         self._batch_fail = 0
         self._batch_running = False
+        self._preview_images: list[str] = []
+        self._preview_index: int = 0
 
         self._build_ui()
+        self.bind("<Left>", lambda _: self._nav_prev())
+        self.bind("<Right>", lambda _: self._nav_next())
 
     # ------------------------------------------------------------------ build
 
@@ -44,20 +48,37 @@ class App(tk.Tk):
         main = tk.Frame(self, padx=8, pady=8)
         main.pack(fill=tk.BOTH, expand=True)
 
-        top = tk.Frame(main)
-        top.pack(fill=tk.BOTH, expand=True)
+        paned = ttk.PanedWindow(main, orient=tk.HORIZONTAL)
+        paned.pack(fill=tk.BOTH, expand=True)
 
-        settings = ttk.LabelFrame(top, text="Settings", padding=10)
-        settings.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 8))
+        settings_outer = tk.Frame(paned, width=320)
+        settings_outer.pack_propagate(False)
+        paned.add(settings_outer, weight=0)
+
+        settings = ttk.LabelFrame(settings_outer, text="Settings", padding=10)
+        settings.pack(fill=tk.BOTH, expand=True)
         self._build_settings(settings)
 
-        self._preview = PreviewPanel(top)
-        self._preview.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        preview_frame = tk.Frame(paned)
+        paned.add(preview_frame, weight=1)
+
+        self._preview = PreviewPanel(preview_frame)
+        self._preview.pack(fill=tk.BOTH, expand=True)
+
+        nav = tk.Frame(preview_frame)
+        nav.pack(fill=tk.X, pady=(4, 0))
+        self._prev_btn = ttk.Button(nav, text="◀ Prev", command=self._nav_prev, state="disabled")
+        self._prev_btn.pack(side=tk.LEFT)
+        self._next_btn = ttk.Button(nav, text="Next ▶", command=self._nav_next, state="disabled")
+        self._next_btn.pack(side=tk.LEFT, padx=(4, 0))
+        self._nav_label_var = tk.StringVar(value="")
+        ttk.Label(nav, textvariable=self._nav_label_var).pack(side=tk.LEFT, padx=(8, 0))
 
         ttk.Separator(main, orient="horizontal").pack(fill=tk.X, pady=8)
         self._build_bottom(main)
 
     def _build_settings(self, f):
+        f.columnconfigure(0, weight=1)
         r = 0
 
         # Input folder
@@ -82,9 +103,9 @@ class App(tk.Tk):
         # Date format
         ttk.Label(f, text="Date/time format:").grid(row=r, column=0, columnspan=2, sticky="w")
         r += 1
-        self._format_var = tk.StringVar(value="%Y-%m-%d")
+        self._format_var = tk.StringVar(value="%B %d, %Y")
         self._format_var.trace_add("write", lambda *_: self._refresh_preview())
-        ttk.Entry(f, textvariable=self._format_var, width=22).grid(row=r, column=0, columnspan=2, sticky="w")
+        ttk.Entry(f, textvariable=self._format_var, width=22).grid(row=r, column=0, columnspan=2, sticky="ew")
         r += 1
 
         presets_frame = ttk.LabelFrame(f, text="Presets", padding=4)
@@ -104,18 +125,38 @@ class App(tk.Tk):
         r += 1
         self._pos_var = tk.StringVar(value=POSITIONS[0])
         pos = ttk.Combobox(f, textvariable=self._pos_var, values=POSITIONS, state="readonly", width=18)
-        pos.grid(row=r, column=0, columnspan=2, sticky="w")
+        pos.grid(row=r, column=0, columnspan=2, sticky="ew")
         pos.bind("<<ComboboxSelected>>", lambda _: self._refresh_preview())
         r += 1
 
         # Font size
-        ttk.Label(f, text="Font size:").grid(row=r, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        ttk.Label(f, text="Font size (%):").grid(row=r, column=0, columnspan=2, sticky="w", pady=(6, 0))
         r += 1
-        self._size_var = tk.IntVar(value=48)
-        sz = ttk.Spinbox(f, from_=8, to=500, textvariable=self._size_var, width=8,
+        self._size_var = tk.DoubleVar(value=4.0)
+        sz = ttk.Spinbox(f, from_=0.5, to=30, increment=0.5, textvariable=self._size_var, width=8,
                          command=self._refresh_preview)
-        sz.grid(row=r, column=0, columnspan=2, sticky="w")
+        sz.grid(row=r, column=0, columnspan=2, sticky="ew")
         self._size_var.trace_add("write", lambda *_: self._refresh_preview())
+        r += 1
+
+        # Padding
+        ttk.Label(f, text="Edge padding (%):").grid(row=r, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        r += 1
+        self._padding_var = tk.DoubleVar(value=3.0)
+        pad = ttk.Spinbox(f, from_=0, to=20, increment=0.5, textvariable=self._padding_var, width=8,
+                          command=self._refresh_preview)
+        pad.grid(row=r, column=0, columnspan=2, sticky="ew")
+        self._padding_var.trace_add("write", lambda *_: self._refresh_preview())
+        r += 1
+
+        # Outline
+        ttk.Label(f, text="Outline (px):").grid(row=r, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        r += 1
+        self._outline_var = tk.IntVar(value=3)
+        outline = ttk.Spinbox(f, from_=0, to=20, textvariable=self._outline_var, width=8,
+                              command=self._refresh_preview)
+        outline.grid(row=r, column=0, columnspan=2, sticky="ew")
+        self._outline_var.trace_add("write", lambda *_: self._refresh_preview())
         r += 1
 
         # Color
@@ -135,7 +176,7 @@ class App(tk.Tk):
         ttk.Label(f, text="Fallback date (no EXIF):").grid(row=r, column=0, columnspan=2, sticky="w")
         r += 1
         self._fallback_var = tk.StringVar()
-        ttk.Entry(f, textvariable=self._fallback_var, width=14).grid(row=r, column=0, columnspan=2, sticky="w")
+        ttk.Entry(f, textvariable=self._fallback_var, width=14).grid(row=r, column=0, columnspan=2, sticky="ew")
         r += 1
         ttk.Label(f, text="YYYY-MM-DD  (blank = skip)", foreground="gray").grid(
             row=r, column=0, columnspan=2, sticky="w")
@@ -175,11 +216,32 @@ class App(tk.Tk):
         self._input_var.set(d)
         if not self._output_var.get():
             self._output_var.set(d.rstrip("/\\") + "_stamped")
-        if not self._prev_var.get():
-            imgs = collect_images(d)
-            if imgs:
-                self._prev_var.set(imgs[0])
-                self._refresh_preview()
+        self._load_preview_images(d)
+
+    def _load_preview_images(self, folder: str):
+        self._preview_images = collect_images(folder)
+        self._preview_index = 0
+        if self._preview_images:
+            self._nav_to(0)
+        state = "normal" if len(self._preview_images) > 1 else "disabled"
+        self._prev_btn.config(state=state)
+        self._next_btn.config(state=state)
+
+    def _nav_prev(self):
+        if self._preview_images:
+            self._nav_to((self._preview_index - 1) % len(self._preview_images))
+
+    def _nav_next(self):
+        if self._preview_images:
+            self._nav_to((self._preview_index + 1) % len(self._preview_images))
+
+    def _nav_to(self, index: int):
+        self._preview_index = index
+        path = self._preview_images[index]
+        self._prev_var.set(path)
+        total = len(self._preview_images)
+        self._nav_label_var.set(f"{index + 1} / {total}  —  {os.path.basename(path)}")
+        self._refresh_preview()
 
     def _browse_output(self):
         d = filedialog.askdirectory(title="Select output folder")
@@ -212,7 +274,9 @@ class App(tk.Tk):
         if not path or not os.path.isfile(path):
             return
         try:
-            font_size = self._size_var.get()
+            font_size_pct = self._size_var.get()
+            padding_pct = self._padding_var.get()
+            outline_px = self._outline_var.get()
         except tk.TclError:
             return
 
@@ -222,7 +286,7 @@ class App(tk.Tk):
         except ValueError:
             date_str = str(date)
 
-        self._preview.update(path, date_str, self._pos_var.get(), font_size, self._color)
+        self._preview.update(path, date_str, self._pos_var.get(), font_size_pct, self._color, padding_pct, outline_px)
 
     def _start(self):
         inp = self._input_var.get().strip()
@@ -263,8 +327,10 @@ class App(tk.Tk):
             output_folder=out,
             format_str=self._format_var.get(),
             position=self._pos_var.get(),
-            font_size=self._size_var.get(),
+            font_size_pct=self._size_var.get(),
             color=self._color,
+            padding_pct=self._padding_var.get(),
+            outline_px=self._outline_var.get(),
             fallback_date=fallback,
         )
 

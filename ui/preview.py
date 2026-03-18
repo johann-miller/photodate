@@ -1,6 +1,6 @@
 import tkinter as tk
 from datetime import datetime
-from PIL import Image, ImageTk
+from PIL import Image, ImageOps, ImageTk
 
 from processing.date_stamp import apply_stamp
 from processing.exif_reader import get_capture_date
@@ -25,10 +25,12 @@ class PreviewPanel(tk.Frame):
         path: str,
         date_str: str,
         position: str,
-        font_size: int,
+        font_size_pct: float,
         color: tuple[int, int, int],
+        padding_pct: float = 3.0,
+        outline_px: int = 3,
     ) -> None:
-        self._last_args = (path, date_str, position, font_size, color)
+        self._last_args = (path, date_str, position, font_size_pct, color, padding_pct, outline_px)
         self._schedule_redraw()
 
     def _on_resize(self, _event):
@@ -44,7 +46,7 @@ class PreviewPanel(tk.Frame):
         if self._last_args is None:
             return
 
-        path, date_str, position, font_size, color = self._last_args
+        path, date_str, position, font_size_pct, color, padding_pct, outline_px = self._last_args
         cw = self._canvas.winfo_width()
         ch = self._canvas.winfo_height()
         if cw < 10 or ch < 10:
@@ -52,8 +54,9 @@ class PreviewPanel(tk.Frame):
 
         try:
             with Image.open(path) as src:
-                orig_w, orig_h = src.size
-                img = src.copy()
+                img = ImageOps.exif_transpose(src)
+
+            orig_w, orig_h = img.size
 
             # Scale to fit canvas
             scale = min(cw / orig_w, ch / orig_h)
@@ -61,10 +64,7 @@ class PreviewPanel(tk.Frame):
             new_h = max(1, int(orig_h * scale))
             img = img.resize((new_w, new_h), Image.LANCZOS)
 
-            # Scale font proportionally so preview matches final output
-            scaled_font = max(6, int(font_size * scale))
-
-            stamped = apply_stamp(img, date_str, position, scaled_font, color)
+            stamped = apply_stamp(img, date_str, position, font_size_pct, color, padding_pct, outline_px)
 
             self._tk_image = ImageTk.PhotoImage(stamped)
             self._canvas.delete("all")

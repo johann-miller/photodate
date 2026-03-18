@@ -1,6 +1,6 @@
 import os
 import sys
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 POSITIONS = [
     "Bottom Right",
@@ -77,14 +77,19 @@ def apply_stamp(
     img: Image.Image,
     date_str: str,
     position: str,
-    font_size: int,
+    font_size_pct: float,
     color: tuple[int, int, int],
-    padding: int = 10,
+    padding_pct: float = 3.0,
+    outline_px: int = 3,
 ) -> Image.Image:
     """Return a new image with the date string stamped on it."""
     out = img.copy()
     if out.mode not in ("RGB", "RGBA", "L"):
         out = out.convert("RGB")
+
+    short_side = min(out.size)
+    font_size = max(1, int(short_side * font_size_pct / 100))
+    padding = int(short_side * padding_pct / 100)
 
     draw = ImageDraw.Draw(out)
     font = _find_font(font_size)
@@ -93,13 +98,15 @@ def apply_stamp(
     text_w = bbox[2] - bbox[0]
     text_h = bbox[3] - bbox[1]
 
-    pad = max(padding, font_size // 2)
-    x, y = _compute_xy(out.size, (text_w, text_h), position, pad)
+    x, y = _compute_xy(out.size, (text_w, text_h), position, padding)
 
     # Outline for readability on any background
     shadow = (0, 0, 0) if (color[0] + color[1] + color[2]) > 382 else (255, 255, 255)
-    for dx, dy in ((-1, -1), (-1, 1), (1, -1), (1, 1), (0, 2), (2, 0), (-2, 0), (0, -2)):
-        draw.text((x + dx, y + dy), date_str, font=font, fill=shadow)
+    if outline_px > 0:
+        for dx in range(-outline_px, outline_px + 1):
+            for dy in range(-outline_px, outline_px + 1):
+                if dx != 0 or dy != 0:
+                    draw.text((x + dx, y + dy), date_str, font=font, fill=shadow)
 
     draw.text((x, y), date_str, font=font, fill=color)
     return out
@@ -110,19 +117,23 @@ def stamp_file(
     output_path: str,
     date_str: str,
     position: str,
-    font_size: int,
+    font_size_pct: float,
     color: tuple[int, int, int],
+    padding_pct: float = 3.0,
+    outline_px: int = 3,
 ) -> None:
     """Read image from input_path, stamp it, write to output_path."""
     with Image.open(input_path) as src:
         save_format = src.format or "JPEG"
-        exif_bytes = src.info.get("exif", b"")
-        img = src.copy()
+        img = ImageOps.exif_transpose(src)
+
+    # exif_transpose resets orientation to 1; grab the updated bytes from the new image
+    exif_bytes = img.info.get("exif", b"")
 
     if save_format in ("JPEG", "JPG") and img.mode != "RGB":
         img = img.convert("RGB")
 
-    stamped = apply_stamp(img, date_str, position, font_size, color)
+    stamped = apply_stamp(img, date_str, position, font_size_pct, color, padding_pct, outline_px)
 
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
 

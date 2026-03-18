@@ -18,8 +18,10 @@ class BatchConfig:
     output_folder: str
     format_str: str
     position: str
-    font_size: int
+    font_size_pct: float
     color: tuple[int, int, int]
+    padding_pct: float = 3.0
+    outline_px: int = 3
     fallback_date: datetime | None = None
 
 
@@ -50,7 +52,7 @@ def _process_one(input_path: str, output_path: str, config: BatchConfig) -> Batc
     date_str = date.strftime(config.format_str)
 
     try:
-        stamp_file(input_path, output_path, date_str, config.position, config.font_size, config.color)
+        stamp_file(input_path, output_path, date_str, config.position, config.font_size_pct, config.color, config.padding_pct, config.outline_px)
         return BatchResult(input_path, True)
     except Exception as exc:
         return BatchResult(input_path, False, str(exc))
