@@ -1,5 +1,6 @@
 import os
 import queue
+import shutil
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -23,6 +24,7 @@ class BatchConfig:
     padding_pct: float = 3.0
     outline_px: int = 3
     fallback_date: datetime | None = None
+    unstamped_folder: str | None = None
 
 
 @dataclass
@@ -41,12 +43,21 @@ def collect_images(folder: str) -> list[str]:
     return images
 
 
-def _process_one(input_path: str, output_path: str, config: BatchConfig) -> BatchResult:
+def _copy_to_unstamped(input_path: str, unstamped_path: str) -> None:
+    dest_dir = os.path.dirname(unstamped_path)
+    if dest_dir:
+        os.makedirs(dest_dir, exist_ok=True)
+    shutil.copy2(input_path, unstamped_path)
+
+
+def _process_one(input_path: str, output_path: str, unstamped_path: str | None, config: BatchConfig) -> BatchResult:
     date = get_capture_date(input_path)
     if date is None:
         if config.fallback_date is not None:
             date = config.fallback_date
         else:
+            if unstamped_path:
+                _copy_to_unstamped(input_path, unstamped_path)
             return BatchResult(input_path, False, "No EXIF date (skipped)")
 
     date_str = date.strftime(config.format_str)
@@ -55,6 +66,8 @@ def _process_one(input_path: str, output_path: str, config: BatchConfig) -> Batc
         stamp_file(input_path, output_path, date_str, config.position, config.font_size_pct, config.color, config.padding_pct, config.outline_px)
         return BatchResult(input_path, True)
     except Exception as exc:
+        if unstamped_path:
+            _copy_to_unstamped(input_path, unstamped_path)
         return BatchResult(input_path, False, str(exc))
 
 
@@ -70,19 +83,20 @@ def run_batch(
     """
     images = collect_images(config.input_folder)
 
-    work: list[tuple[str, str]] = []
+    work: list[tuple[str, str, str | None]] = []
     for img_path in images:
         rel = os.path.relpath(img_path, config.input_folder)
         out_path = os.path.join(config.output_folder, rel)
-        work.append((img_path, out_path))
+        unstamped_path = os.path.join(config.unstamped_folder, rel) if config.unstamped_folder else None
+        work.append((img_path, out_path, unstamped_path))
 
     progress_queue.put(("total", len(work)))
 
     max_workers = min(4, os.cpu_count() or 1)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(_process_one, inp, out, config): inp
-            for inp, out in work
+            executor.submit(_process_one, inp, out, unstamped, config): inp
+            for inp, out, unstamped in work
         }
         for future in as_completed(futures):
             if cancel_event.is_set():

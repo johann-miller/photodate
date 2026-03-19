@@ -98,6 +98,17 @@ class App(tk.Tk):
         ttk.Button(f, text="…", width=2, command=self._browse_output).grid(row=r, column=1, padx=(4, 0))
         r += 1
 
+        # Unstamped folder
+        ttk.Label(f, text="Unstamped folder:").grid(row=r, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        r += 1
+        self._unstamped_var = tk.StringVar()
+        ttk.Entry(f, textvariable=self._unstamped_var, width=26).grid(row=r, column=0, sticky="ew")
+        ttk.Button(f, text="…", width=2, command=self._browse_unstamped).grid(row=r, column=1, padx=(4, 0))
+        r += 1
+        ttk.Label(f, text="(blank = don't copy failures)", foreground="gray").grid(
+            row=r, column=0, columnspan=2, sticky="w")
+        r += 1
+
         ttk.Separator(f, orient="horizontal").grid(row=r, column=0, columnspan=2, sticky="ew", pady=8)
         r += 1
 
@@ -215,8 +226,11 @@ class App(tk.Tk):
         if not d:
             return
         self._input_var.set(d)
+        base = d.rstrip("/\\")
         if not self._output_var.get():
-            self._output_var.set(d.rstrip("/\\") + "_stamped")
+            self._output_var.set(base + "_stamped")
+        if not self._unstamped_var.get():
+            self._unstamped_var.set(base + "_unstamped")
         self._load_preview_images(d)
 
     def _load_preview_images(self, folder: str):
@@ -248,6 +262,11 @@ class App(tk.Tk):
         d = filedialog.askdirectory(title="Select output folder")
         if d:
             self._output_var.set(d)
+
+    def _browse_unstamped(self):
+        d = filedialog.askdirectory(title="Select unstamped folder")
+        if d:
+            self._unstamped_var.set(d)
 
     def _browse_preview(self):
         p = filedialog.askopenfilename(
@@ -293,6 +312,8 @@ class App(tk.Tk):
         inp = self._input_var.get().strip()
         out = self._output_var.get().strip()
 
+        unstamped = self._unstamped_var.get().strip() or None
+
         if not inp or not os.path.isdir(inp):
             messagebox.showerror("Error", "Select a valid input folder.")
             return
@@ -305,6 +326,12 @@ class App(tk.Tk):
                 "Output folder must be different from input folder.\n"
                 "Overwriting originals is not allowed.",
             )
+            return
+        if unstamped and os.path.abspath(unstamped) == os.path.abspath(inp):
+            messagebox.showerror("Error", "Unstamped folder must be different from input folder.")
+            return
+        if unstamped and os.path.abspath(unstamped) == os.path.abspath(out):
+            messagebox.showerror("Error", "Unstamped folder must be different from output folder.")
             return
 
         fallback: datetime | None = None
@@ -333,6 +360,7 @@ class App(tk.Tk):
             padding_pct=self._padding_var.get(),
             outline_px=self._outline_var.get(),
             fallback_date=fallback,
+            unstamped_folder=unstamped,
         )
 
         self._cancel_event.clear()
